@@ -8,12 +8,14 @@
 	v220607 Fixed row number issue. f1-3: updated colors.
 	v230530 Saves settings.
 	v230531 Uses ROI.getFeretPoints to generate primary Feret axis. Changed table column names to be more descriptive. F1: updated indexOf functions. F3: Updated getColorFromColorName function (012324).
-	v260416-7	Added HV from indent dArea option.
+	v260416-20	Added HV from indent dArea option.
+	v260422	Replace HV from indent with Meyer Hardness, and added a plasticity Index, and SI options.
 */
 macro "Add_HV_to_Results_Table" {
-    macroL = "Add_HV_to_Results_Table_v260417.ijm";
+    macroL = "Add_HV_to_Results_Table_v260422.ijm";
     requires("1.52m28"); /*Uses the new ROI.getFeretPoints released in 1.52m28 */
     saveSettings(); /* Required for restoreExit function */
+	imageTitle = stripKnownExtensionFromString(getTitle);
     nTable = Table.size;
     if (nTable == 0) restoreExit("No Table to work with");
     tableTitle = Table.title;
@@ -36,7 +38,7 @@ macro "Add_HV_to_Results_Table" {
 	infoColor = "#006db0"; /* Honolulu blue */
 	instructionColor = "#798541"; /* green_dark_modern (121, 133, 65) AKA Wasabi */
 	infoWarningColor = "#ff69b4"; /* pink_modern AKA hot pink */
-	infoFontSize = 12;
+	infoFontSize = 13;
     if (Table.size != 0) {
         tablePW = Table.get("PixelWidth", 0); /* This value embedded in the table by some ASC macros */
         tablePAR = Table.get("PixelAR", 0); /* This value embedded in the table by some ASC macros */
@@ -83,8 +85,14 @@ macro "Add_HV_to_Results_Table" {
     Dialog.create("Provide Load and Set Scale to Match Results Table \(" + macroL + "\)");
     gLoad = parseInt(call("ij.Prefs.get", "asc.hv.load", 100));
     Dialog.addNumber("Provide load in g used for indentation", gLoad, 0, 10, "g");
-    method = call("ij.Prefs.get", "asc.hv.method", "Indent diagonals");
-    Dialog.addRadioButtonGroup("Measurement method \(''Indent diagonals'' corresponds to traditional manual measurements\)", newArray("Indent diagonals", "Indent area"), 1, 2, method);
+    additionalMethods = newArray("Meyer Hardness", "Plasticity_Index", "Surface_Area_Hardness \(GPa\)", "Projected_Area_Hardness \(GPa\)");
+	methodPrefs = split(call("ij.Prefs.get", "asc.hv.methodChecks", "0, 0, 0, 0"), ",");
+	Dialog.addMessage("In addition to conventional HV from indent diagonals the followint are optional:" +
+		"\n   Meyer Hardness (MPa) = F \(N\) / Projected Area \(m" + fromCharCode(178) + "\)" + 
+		"\n   Plasticity Index: Ap / Ad, where Ap = projected Area & Ad = Area calculated from diagonals" + 
+		"\n   SI Units: Surface Area Hardness \(GPa\) = HV * 9.80665 / 1000" +
+		"\n   SI Units: Projected Area Hardness \(GPa\) = HV * 94.5", infoFontSize, instructionColor);
+	Dialog.addCheckboxGroup(4, 1, additionalMethods, methodPrefs);
     Dialog.addMessage("Optional overlay lines \(set width to 0 for no lines\):", infoFontSize, instructionColor);
     /* ROI Feret */
     if (overlayN > 0) {
@@ -92,26 +100,32 @@ macro "Add_HV_to_Results_Table" {
         Dialog.addCheckbox("Remove the " + overlayN + " existing overlays?", true);
     }
     Dialog.setInsets(5, 0, -3);
-    Dialog.addMessage("Optional Primary Feret line or diamond outline \(if Indent Area is chosen\)", infoFontSize, instructionColor);
+    Dialog.addMessage("Optional Primary Feret line", infoFontSize, instructionColor);
     iFC = indexOfArray(colorChoices, call("ij.Prefs.get", "asc.hv.feret.color", colorChoices[1]), 1);
     Dialog.addChoice("Primary Feret line color:", colorChoices, colorChoices[iFC]);
     feretROILineWidth = parseInt(call("ij.Prefs.get", "asc.hv.feret.width", 0), 0);
     Dialog.addNumber("Primary Feret line width \(0 = no line\) = ", feretROILineWidth, 0, 3, "pixels");
     /* ROI Feret 2 */
     Dialog.setInsets(5, 0, -3);
-    Dialog.addMessage("Optional Feret2 \(complimentary\) line or diamond diagonal \(if Indent Area is chosen\)", infoFontSize, instructionColor);
+    Dialog.addMessage("Optional Feret2 \(complimentary\) line", infoFontSize, instructionColor);
     iF2C = indexOfArray(colorChoices, call("ij.Prefs.get", "asc.hv.feret2.color", colorChoices[2]), 2);
     Dialog.addChoice("Feret2 \(complimentary\) line color:", colorChoices, colorChoices[iF2C]);
     feret2LineWidth = parseInt(call("ij.Prefs.get", "asc.hv.feret2.width", 0), 0);
     Dialog.addNumber("Feret2 \(complimentary\) line width \(0 = no line\) = ", feret2LineWidth, 0, 3, "pixels");
+	Dialog.addCheckbox("Flatten image to embed overlay lines in RGB copy of image?", call("ij.Prefs.get", "asc.hv.flatImage", true));
     if (pixelAR != 1) Dialog.addMessage("Aspect pixels, average pixel size of " + lcf + " " + unit + " used", infoFontSize, instructionColor);
     if (unit != "mm") Dialog.addMessage("Image scale in " + unit + ", so the mm" + sup2 + " scale factor used is " + sF, infoFontSize, infoWarningColor);
     if (!tableScale) Dialog.addCheckbox("The Results table does include the scale; do you want to add scale and unit columns?", true);
     Dialog.show;
     gLoad = Dialog.getNumber;
     if (gLoad >= 0) call("ij.Prefs.set", "asc.hv.load", gLoad);
-    method = Dialog.getRadioButton();
-    call("ij.Prefs.set", "asc.hv.method", method);
+	hM = Dialog.getCheckbox();
+	indexP = Dialog.getCheckbox();
+	hS = Dialog.getCheckbox();
+	hP = Dialog.getCheckbox();
+	checks = newArray(hM, indexP, hS, hP);
+	checksString = arrayToString(checks, ",");
+	call("ij.Prefs.set", "asc.hv.methodChecks", checksString);
     /* ROI Feret line */
     if (overlayN > 0) remOverlays = Dialog.getCheckbox();
     else remOverlays = false;
@@ -124,135 +138,136 @@ macro "Add_HV_to_Results_Table" {
     call("ij.Prefs.set", "asc.hv.feret2.color", feret2LineColor);
     feret2LineWidth = Dialog.getNumber();
     call("ij.Prefs.set", "asc.hv.feret2.width", feret2LineWidth);
-    if (!tableScale) addTableScale = Dialog.getCheckbox();
-    else addTableScale = false;
-	if (feretROILineWidth > 0 && method == "Indent Area")  drawDiamond = true;
+	flatImage = Dialog.getCheckbox();
+	call("ij.Prefs.set", "asc.hv.flatImage", flatImage);
+    if (!tableScale){
+		if (Dialog.getCheckbox()){
+			tableSetColumnValue("PixelWidth", pixelWidth);
+			tableSetColumnValue("PixelAR", pixelAR);
+			tableSetColumnValue("Unit", unit);
+		}
+    }
+	if (feretROILineWidth > 0)  drawDiamond = true;
     if (remOverlays) run("Remove Overlay");
     tableSetColumnValue("HV_load_g", gLoad);
     avgFerets_mm = newArray(nTable);
-    if (method == "Indent diagonals") {
-        if (needFeret) {
-            if (!ROIs) restoreExit("Sorry, this macro needs ROIs to generate ROI_Feret and Feret2 \(complimentary Feret\) values");
-            else {
-                for (i = 0; i < nROI; i++) {
-                    if (i % 5 == 0) showProgress(i / nROI);
-                    roiManager("select", i);
-                    Roi.getFeretPoints(x, y);
-                    /* The minFeret is not needed here but is added in case it is useful elsewhere */
-                    Table.set("MinFeretX", i, x[2]);
-                    Table.set("MinFeretY", i, y[2]);
-                    Table.set("MinFeretX2", i, d2s(round(x[3]), 0));
-                    Table.set("MinFeretY2", i, d2s(round(y[3]), 0));
-                    /* The macro uses the Feret and complimentary Feret (called Feret2 here) to help generate the indent surface area */
-                    Table.set("FeretX", i, x[0]);
-                    Table.set("FeretY", i, y[0]);
-                    Table.set("FeretX2", i, x[1]);
-                    Table.set("FeretY2", i, y[1]);
-                    feretD = lcf * sqrt(pow(x[0] - x[1], 2) + pow(y[0] - y[1], 2));
-                    Table.set("Feret", i, feretD);
-                    minFeretD = lcf * sqrt(pow(x[2] - x[3], 2) + pow(y[2] - y[3], 2));
-                    Table.set("MinFeret", i, minFeretD);
-                    // Table.set("AR_Feret",i,feretD/minFeretD);
-                    Table.update;
-                    Roi.getCoordinates(xPoints, yPoints);
-                    nPoints = lengthOf(xPoints);
-                    /* Now determine complimentary Feret (NOT the min Feret) */
-                    maxCombinedDist = 0;
-                    /* Find first Feret2 point as the furthest ROI coordinate from the ROI-Feret coordinates */
-                    for (j = 0; j < nPoints; j++) {
-                        combinedDist = (sqrt(pow(xPoints[j] - x[0], 2) + pow(yPoints[j] - y[0], 2))) + (sqrt(pow(xPoints[j] - x[1], 2) + pow(yPoints[j] - y[1], 2)));
-                        if (combinedDist > maxCombinedDist) {
-                            maxCombinedDist = combinedDist;
-                            feret2X = xPoints[j];
-                            feret2Y = yPoints[j];
-                        }
-                    }
-                    Table.set("Feret2X", i, feret2X);
-                    Table.set("Feret2Y", i, feret2Y);
-                    feret2 = 0;
-                    /* Find the 2nd Feret2 point as the most distant from the first */
-                    for (j = 0; j < nPoints; j++) {
-                        f2Dist = sqrt(pow(xPoints[j] - feret2X, 2) + pow(yPoints[j] - feret2Y, 2));
-                        if (f2Dist > feret2) {
-                            feret2 = f2Dist;
-                            feret2X2 = xPoints[j];
-                            feret2Y2 = yPoints[j];
-                        }
-                    }
-                    Table.set("Feret2X2", i, feret2X2);
-                    Table.set("Feret2Y2", i, feret2Y2);
-                    feret2 *= lcf;
-                    Table.set("Feret2", i, feret2);
-                    // Table.set("AR_ROIFeret",i,feretROI/feret2);
-                    Table.update;
-                }
-            }
-        }
-        if (feretROILineWidth > 0) {
-            setColorFromColorName(feretROILineColor);
-            for (i = 0; i < nROI; i++) {
-                setLineWidth(feretROILineWidth);
-                /* need to recall from Table if the values already exit */
-                Overlay.drawLine(Table.get("FeretX", i), Table.get("FeretY", i), Table.get("FeretX2", i), Table.get("FeretY2", i));
-                Overlay.show;
-            }
-        }
-        if (feret2LineWidth > 0) {
-            setColorFromColorName(feret2LineColor);
-            for (i = 0; i < nROI; i++) {
-                setLineWidth(feret2LineWidth);
-                Overlay.drawLine(Table.get("Feret2X", i), Table.get("Feret2Y", i), Table.get("Feret2X2", i), Table.get("Feret2Y2", i));
-                Overlay.show;
-            }
-        }
-        Table.applyMacro("Avg_FeretMaxComp = (Feret+Feret2)/2");
-        if (!isNaN(Table.get("Feret", 0)) && !isNaN(Table.get("Feret2", 0))) Table.applyMacro("AR_FeretMaxComp = Feret/Feret2");
-        avgFerets = Table.getColumn("Avg_FeretMaxComp");
-        if (unit != "mm")
-            for (i = 0; i < nTable; i++) avgFerets_mm[i] = avgFerets[i] * sF;
-    } else {
-        dAreas = Table.getColumn("Area");
-		avgFerets = newArray(nTable);
-        for (i = 0; i < nTable; i++){
-			avgFerets[i] = sqrt(2 * dAreas[i]);
-			avgFerets_mm[i] = sqrt(2 * dAreas[i]) * sF;
-			if (drawDiamond) {
-				xPx = getResult("X", i) / pixelWidth;
-				yPx = getResult("Y", i) / pixelHeight;
-				majorPx = getResult("Major", i) / lcf;
-				minorPx = getResult("Minor", i) / lcf;
-				avgFeretsPx = sqrt(2 * dAreas[i]) / lcf;
-				edgeL = sqrt(dAreas[i]) / lcf;
-				makeRectangle(xPx - edgeL /2, yPx - edgeL /2, edgeL, edgeL);
-				if (isNaN(Table.get("FeretAngle", 0))) run("Rotate...", "angle=" + getResult("Angle", i));
-				else run("Rotate...", "angle=" + getResult("FeretAngle", i) + 45);
-				Overlay.addSelection(feretROILineColor, feretROILineWidth);
-				setLineWidth(feret2LineWidth);
-				setColorFromColorName(feret2LineColor);
-				Overlay.drawLine(xPx, yPx - avgFeretsPx /2, xPx, yPx + avgFeretsPx /2);
-				Overlay.show;
+	if (needFeret) {
+		if (!ROIs) restoreExit("Sorry, this macro needs ROIs to generate ROI_Feret and Feret2 \(complimentary Feret\) values");
+		else {
+			for (i = 0; i < nROI; i++) {
+				if (i % 5 == 0) showProgress(i / nROI);
+				roiManager("select", i);
+				Roi.getFeretPoints(x, y);
+				/* The minFeret is not needed here but is added in case it is useful elsewhere */
+				Table.set("MinFeretX", i, x[2]);
+				Table.set("MinFeretY", i, y[2]);
+				Table.set("MinFeretX2", i, d2s(round(x[3]), 0));
+				Table.set("MinFeretY2", i, d2s(round(y[3]), 0));
+				/* The macro uses the Feret and complimentary Feret (called Feret2 here) to help generate the indent surface area */
+				Table.set("FeretX", i, x[0]);
+				Table.set("FeretY", i, y[0]);
+				Table.set("FeretX2", i, x[1]);
+				Table.set("FeretY2", i, y[1]);
+				feretD = lcf * sqrt(pow(x[0] - x[1], 2) + pow(y[0] - y[1], 2));
+				Table.set("Feret", i, feretD);
+				minFeretD = lcf * sqrt(pow(x[2] - x[3], 2) + pow(y[2] - y[3], 2));
+				Table.set("MinFeret", i, minFeretD);
+				// Table.set("AR_Feret",i,feretD/minFeretD);
+				Table.update;
+				Roi.getCoordinates(xPoints, yPoints);
+				nPoints = lengthOf(xPoints);
+				/* Now determine complimentary Feret (NOT the min Feret) */
+				maxCombinedDist = 0;
+				/* Find first Feret2 point as the furthest ROI coordinate from the ROI-Feret coordinates */
+				for (j = 0; j < nPoints; j++) {
+					combinedDist = (sqrt(pow(xPoints[j] - x[0], 2) + pow(yPoints[j] - y[0], 2))) + (sqrt(pow(xPoints[j] - x[1], 2) + pow(yPoints[j] - y[1], 2)));
+					if (combinedDist > maxCombinedDist) {
+						maxCombinedDist = combinedDist;
+						feret2X = xPoints[j];
+						feret2Y = yPoints[j];
+					}
+				}
+				Table.set("Feret2X", i, feret2X);
+				Table.set("Feret2Y", i, feret2Y);
+				feret2 = 0;
+				/* Find the 2nd Feret2 point as the most distant from the first */
+				for (j = 0; j < nPoints; j++) {
+					f2Dist = sqrt(pow(xPoints[j] - feret2X, 2) + pow(yPoints[j] - feret2Y, 2));
+					if (f2Dist > feret2) {
+						feret2 = f2Dist;
+						feret2X2 = xPoints[j];
+						feret2Y2 = yPoints[j];
+					}
+				}
+				Table.set("Feret2X2", i, feret2X2);
+				Table.set("Feret2Y2", i, feret2Y2);
+				feret2 *= lcf;
+				Table.set("Feret2", i, feret2);
+				// Table.set("AR_ROIFeret",i,feretROI/feret2);
+				Table.update;
 			}
 		}
-    }
-    surfAreaF = 0.002 * sF * sin(68 * PI / 180) * gLoad;
+	}
+	if (feretROILineWidth > 0) {
+		setColorFromColorName(feretROILineColor);
+		for (i = 0; i < nROI; i++) {
+			setLineWidth(feretROILineWidth);
+			/* need to recall from Table if the values already exit */
+			Overlay.drawLine(Table.get("FeretX", i), Table.get("FeretY", i), Table.get("FeretX2", i), Table.get("FeretY2", i));
+			Overlay.show;
+		}
+	}
+	if (feret2LineWidth > 0) {
+		setColorFromColorName(feret2LineColor);
+		for (i = 0; i < nROI; i++) {
+			setLineWidth(feret2LineWidth);
+			Overlay.drawLine(Table.get("Feret2X", i), Table.get("Feret2Y", i), Table.get("Feret2X2", i), Table.get("Feret2Y2", i));
+			Overlay.show;
+		}
+	}
+	Table.applyMacro("FeretMaxCompAvg = (Feret+Feret2)/2");
+	if (!isNaN(Table.get("Feret", 0)) && !isNaN(Table.get("Feret2", 0))) Table.applyMacro("FeretMaxAR = Feret/Feret2");
+	if (!isNaN(Table.get("FeretMaxCompAvg", 0))) avgFerets = Table.getColumn("FeretMaxCompAvg");
+	else exit("Could not find column FeretMaxCompAvg");
+	if (unit != "mm"){
+		avgFerets_mm = newArray();
+		for (i = 0; i < nTable; i++) avgFerets_mm[i] = avgFerets[i] * sF;
+		Table.set("FeretMaxCompAvg\(mm\)", i, avgFerets_mm);
+	}
+	surfAreaF = 0.002 * sF * sin(68 * PI / 180) * gLoad;
+	hVs = newArray();
     for (i = 0; i < nTable; i++) {
-        HV = surfAreaF / (pow(avgFerets[i], 2));
-        if (method == "Indent diagonals"){
-			Table.set("HV_" + gLoad + "g", i, HV);
-			Table.set("YS_d_Mpa", i, HV / 0.3);
-		}
-		else {
-			Table.set("HV\(dArea\)_" + gLoad + "g", i, HV);
-			Table.set("YS\(dArea\)_d_Mpa", i, HV / 0.3);		
-		}
+        hVs[i] = surfAreaF / (pow(avgFerets[i], 2));
+		Table.set("HV_" + gLoad + "g", i, hVs[i]);
+		Table.set("YS_d_Mpa", i, hVs[i] / 0.3);
     }
-    if (addTableScale) {
-        tableSetColumnValue("PixelWidth", pixelWidth);
-        tableSetColumnValue("PixelAR", pixelAR);
-        tableSetColumnValue("Unit", unit);
-    }
+	if (hM || indexP) dAreas = Table.getColumn("Area");
+	if (hM){
+		fN = gLoad / 9806.65;
+		m2MPaF = fN * sF;
+		for (i = 0; i < nTable; i++) {
+			HM = m2MPaF / dAreas[i];
+			Table.set("HM" + gLoad + "g\(MPa\)", i, HM);
+		}
+	}
+	if (indexP){
+		for (i = 0; i < nTable; i++) {
+			indexP = dAreas[i] / (pow(avgFerets[i], 2) / 2);
+			Table.set("Plasticity", i, indexP);
+		}
+	}	
+	if (hS || hP){
+		for (i = 0; i < nTable; i++) {
+			if (hS) Table.set("Hsa\(GPa\)", i, hVs[i] * 0.00980665);
+			if (hP) Table.set("Hpa\(GPa\)", i, hVs[i] / 94.5);
+		}
+	}
     run("Select None");
     roiManager("deselect");
+	if (flatImage){
+		run("Flatten");
+		rename(imageTitle + "_HV-lines");
+	}
     setBatchMode("exit and display");
     restoreSettings(); /* Restore previous settings before exiting */
     beep(); wait(200); beep(); wait(200); beep(); wait(300); beep();
@@ -262,6 +277,12 @@ macro "Add_HV_to_Results_Table" {
 /*
 		   ( 8(|)	( 8(|)	Functions	@@@@@:-)	@@@@@:-)
    */
+function arrayToString(array, delimiter){
+	/* v260422 */
+	string = "" + array[0];
+	for (i = 1; i < array.length; i++) string += "," + array[i];
+	return string;
+}
 function indexOfArray(array, value,
     default) {
     /* v190423 Adds "default" parameter (use -1 for backwards compatibility). Returns only first found value
@@ -385,7 +406,60 @@ function restoreExit(message) {
     if (message != "") exit(message);
     else exit;
 }
-
+function stripKnownExtensionFromString(string) {
+	/*	Note: Do not use on path as it may change the directory names
+	v210924: Tries to make sure string stays as string.	v211014: Adds some additional cleanup.	v211025: fixes multiple 'known's issue.	v211101: Added ".Ext_" removal.
+	v211104: Restricts cleanup to end of string to reduce risk of corrupting path.	v211112: Tries to fix trapped extension before channel listing. Adds xlsx extension.
+	v220615: Tries to fix the fix for the trapped extensions ...	v230504: Protects directory path if included in string. Only removes doubled spaces and lines.
+	v230505: Unwanted dupes replaced by unusefulCombos.	v230607: Quick fix for infinite loop on one of while statements.
+	v230614: Added AVI.	v230905: Better fix for infinite loop. v230914: Added BMP and "_transp" and rearranged
+	*/
+	fS = File.separator;
+	string = "" + string;
+	protectedPathEnd = lastIndexOf(string, fS) + 1;
+	if (protectedPathEnd > 0) {
+		protectedPath = substring(string, 0, protectedPathEnd);
+		string = substring(string, protectedPathEnd);
+	}
+	unusefulCombos = newArray("-", "_", " ");
+	for (i = 0; i < lengthOf(unusefulCombos); i++) {
+		for (j = 0; j < lengthOf(unusefulCombos); j++) {
+			combo = unusefulCombos[i] + unusefulCombos[j];
+			while (indexOf(string, combo) >= 0) string = replace(string, combo, unusefulCombos[i]);
+		}
+	}
+	if (lastIndexOf(string, ".") > 0 || lastIndexOf(string, "_lzw") > 0) {
+		knownExts = newArray(".avi", ".csv", ".bmp", ".dsx", ".gif", ".jpg", ".jpeg", ".jp2", ".png", ".tif", ".txt", ".xlsx");
+		knownExts = Array.concat(knownExts, knownExts, "_transp", "_lzw");
+		kEL = knownExts.length;
+		for (i = 0; i < kEL / 2; i++) knownExts[i] = toUpperCase(knownExts[i]);
+		chanLabels = newArray(" \(red\)", " \(green\)", " \(blue\)", "\(red\)", "\(green\)", "\(blue\)");
+		for (i = 0, k = 0; i < kEL; i++) {
+			for (j = 0; j < chanLabels.length; j++) {
+				/* Looking for channel-label-trapped extensions */
+				iChanLabels = lastIndexOf(string, chanLabels[j]) - 1;
+				if (iChanLabels > 0) {
+					preChan = substring(string, 0, iChanLabels);
+					postChan = substring(string, iChanLabels);
+					while (indexOf(preChan, knownExts[i]) > 0) {
+						preChan = replace(preChan, knownExts[i], "");
+						string = preChan + postChan;
+					}
+				}
+			}
+			while (endsWith(string, knownExts[i])) string = "" + substring(string, 0, lastIndexOf(string, knownExts[i]));
+		}
+	}
+	unwantedSuffixes = newArray(" ", "_", "-");
+	for (i = 0; i < unwantedSuffixes.length; i++) {
+		while (endsWith(string, unwantedSuffixes[i])) string = substring(string, 0, string.length - lengthOf(unwantedSuffixes[i])); /* cleanup previous suffix */
+	}
+	if (protectedPathEnd > 0) {
+		if (!endsWith(protectedPath, fS)) protectedPath += fS;
+		string = protectedPath + string;
+	}
+	return string;
+}
 function tableSetColumnValue(columnName, value) {
     /* Original version v190905 to overcome Table macro limitation - PJL
     	v190906 Add table update
