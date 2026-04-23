@@ -9,10 +9,10 @@
 	v230530 Saves settings.
 	v230531 Uses ROI.getFeretPoints to generate primary Feret axis. Changed table column names to be more descriptive. F1: updated indexOf functions. F3: Updated getColorFromColorName function (012324).
 	v260416-20	Added HV from indent dArea option.
-	v260422	Replace HV from indent with Meyer Hardness, and added a plasticity Index, and SI options. c. Handles a wider variety of microns.
+	v260422	Replace HV from indent with Meyer Hardness, and added a plasticity Index, and SI options. g. Handles a wider variety of microns.
 */
 macro "Add_HV_to_Results_Table" {
-    macroL = "Add_HV_to_Results_Table_v260422b.ijm";
+    macroL = "Add_HV_to_Results_Table_v260422g.ijm";
     requires("1.52m28"); /*Uses the new ROI.getFeretPoints released in 1.52m28 */
     saveSettings(); /* Required for restoreExit function */
 	imageTitle = stripKnownExtensionFromString(getTitle);
@@ -34,8 +34,7 @@ macro "Add_HV_to_Results_Table" {
     tableScale = false;
     pixelWidth = 1; /* no-scale flag */
     pixelHeight = 1; /* no-scale flag */
-    unit = getInfo("micrometer.abbreviation");
-	if (unit == "um" || unit == "Âµm" || unit == "µm" || startsWith(unit, "micron")) unit = getInfo("micrometer.abbreviation");
+    unit = getInfo("micrometer.abbreviation"); /* just a holder */
 	infoColor = "#006db0"; /* Honolulu blue */
 	instructionColor = "#798541"; /* green_dark_modern (121, 133, 65) AKA Wasabi */
 	infoWarningColor = "#ff69b4"; /* pink_modern AKA hot pink */
@@ -54,7 +53,6 @@ macro "Add_HV_to_Results_Table" {
         }
     }
     if (!tableScale && nImages != 0) getPixelSize(unit, pixelWidth, pixelHeight);
-    if (unit == "um" || unit == "microns" || unit == "µm") unit = getInfo("micrometer.abbreviation");
     if (pixelWidth == 1 || indexOfArray(availableUnits, unit, -1) < 0) {
         Dialog.create("Manual scale entry");
         Dialog.addMessage("No images open, or scale appears to be non-metric, please enter unit values", infoFontSize, infoWarningColor);
@@ -69,11 +67,12 @@ macro "Add_HV_to_Results_Table" {
     }
     if (indexOfArray(availableUnits, unit, -1) < 0) exit("Sorry, no appropriate units available");
     pixelAR = pixelWidth / pixelHeight;
-    if (unit == "um" || unit == "microns") unit = getInfo("micrometer.abbreviation");
+	if (unit == "um" || unit == "Âµm" || unit == "µm" || startsWith(unit, "micron")) unit = getInfo("micrometer.abbreviation");
     unitLabel = "\(" + unit + "\)";
     lcf = (pixelWidth + pixelHeight) / 2;
     sFI = indexOfArray(availableUnits, unit, -1);
     sF = scaleFactors[sFI];
+	if (sF < 1) exit("No scale factor found for unit " + unit);
     sup2 = fromCharCode(0x00B2); /* superscript 2 */
 	colorChoicesStd = newArray("red", "green", "blue", "cyan", "magenta", "yellow", "pink", "orange", "violet");
     colorChoicesMaterials = newArray("bronze", "antique_bronze", "brass", "dull_brass", "brick", "chrome", "copper", "aged_copper", "dusky_copper", "light_copper", "garnet", "burnished_gold", "gold", "slate_gray", "titanium", "vault_garnet", "plaza_brick", "vault_gold");
@@ -230,10 +229,10 @@ macro "Add_HV_to_Results_Table" {
 	if (!isNaN(Table.get("Feret", 0)) && !isNaN(Table.get("Feret2", 0))) Table.applyMacro("FeretMaxAR = Feret/Feret2");
 	if (!isNaN(Table.get("FeretMaxCompAvg", 0))) avgFerets = Table.getColumn("FeretMaxCompAvg");
 	else exit("Could not find column FeretMaxCompAvg");
-	if (unit != "mm"){
+	if (unit != "mm" && sF >= 1){
 		avgFerets_mm = newArray();
 		for (i = 0; i < nTable; i++) avgFerets_mm[i] = avgFerets[i] * sF;
-		Table.set("FeretMaxCompAvg\(mm\)", i, avgFerets_mm);
+		Table.set("FeretMaxCompAvg_mm", i, avgFerets_mm[i]);
 	}
 	surfAreaF = 0.002 * sF * sin(68 * PI / 180) * gLoad;
 	hVs = newArray();
