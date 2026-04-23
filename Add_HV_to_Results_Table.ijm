@@ -9,10 +9,10 @@
 	v230530 Saves settings.
 	v230531 Uses ROI.getFeretPoints to generate primary Feret axis. Changed table column names to be more descriptive. F1: updated indexOf functions. F3: Updated getColorFromColorName function (012324).
 	v260416-20	Added HV from indent dArea option.
-	v260422	Replace HV from indent with Meyer Hardness, and added a plasticity Index, and SI options.
+	v260422	Replace HV from indent with Meyer Hardness, and added a plasticity Index, and SI options. c. Handles a wider variety of microns.
 */
 macro "Add_HV_to_Results_Table" {
-    macroL = "Add_HV_to_Results_Table_v260422.ijm";
+    macroL = "Add_HV_to_Results_Table_v260422b.ijm";
     requires("1.52m28"); /*Uses the new ROI.getFeretPoints released in 1.52m28 */
     saveSettings(); /* Required for restoreExit function */
 	imageTitle = stripKnownExtensionFromString(getTitle);
@@ -28,13 +28,14 @@ macro "Add_HV_to_Results_Table" {
     else needFeret = false;
     if (needFeret && nImages == 0) restoreExit("Goodbye, Feret measurements are needed but no images are open to generate them");
     /* 'Feret's Diameter - The longest distance between any two points along the selection boundary, also known as maximum caliper. Uses the Feret heading...MinFeret is the minimum caliper diameter.' https://imagej.net/docs/menus/analyze.html */
-    availableUnits = newArray("mm", getInfo("micrometer.abbreviation"), "nm", "pm"); /* Just these acceptable units in this version but see below */
+	availableUnits = newArray("mm", getInfo("micrometer.abbreviation"), "nm", "pm"); /* Just these acceptable units in this version but see below */
     scaleFactors = newArray(1, 1E6, 1E12, 1E18); /* Add to scale factors if available units is expanded */
     /* Check table for embedded scale */
     tableScale = false;
     pixelWidth = 1; /* no-scale flag */
     pixelHeight = 1; /* no-scale flag */
     unit = getInfo("micrometer.abbreviation");
+	if (unit == "um" || unit == "Âµm" || unit == "µm" || startsWith(unit, "micron")) unit = getInfo("micrometer.abbreviation");
 	infoColor = "#006db0"; /* Honolulu blue */
 	instructionColor = "#798541"; /* green_dark_modern (121, 133, 65) AKA Wasabi */
 	infoWarningColor = "#ff69b4"; /* pink_modern AKA hot pink */
@@ -54,7 +55,7 @@ macro "Add_HV_to_Results_Table" {
     }
     if (!tableScale && nImages != 0) getPixelSize(unit, pixelWidth, pixelHeight);
     if (unit == "um" || unit == "microns" || unit == "µm") unit = getInfo("micrometer.abbreviation");
-    if (pixelWidth == 1 || indexOfArray(availableUnits, unit, -1) == -1) {
+    if (pixelWidth == 1 || indexOfArray(availableUnits, unit, -1) < 0) {
         Dialog.create("Manual scale entry");
         Dialog.addMessage("No images open, or scale appears to be non-metric, please enter unit values", infoFontSize, infoWarningColor);
         Dialog.addNumber("pixel width", 1, 10, 10, "units");
@@ -66,7 +67,7 @@ macro "Add_HV_to_Results_Table" {
         pixelHeight = Dialog.getNumber;
         unit = Dialog.getChoice;
     }
-    if (indexOfArray(availableUnits, unit, -1) == -1) exit("Sorry, no appropriate units available");
+    if (indexOfArray(availableUnits, unit, -1) < 0) exit("Sorry, no appropriate units available");
     pixelAR = pixelWidth / pixelHeight;
     if (unit == "um" || unit == "microns") unit = getInfo("micrometer.abbreviation");
     unitLabel = "\(" + unit + "\)";
