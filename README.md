@@ -1,4 +1,4 @@
-# asc-ImageJ-TouchCount-and-Proximity macros
+# asc-ImageJ-VickersHardness macro
 
 <h3>Vickers Hardness Macro</h3>
 <p>This ImageJ macro:
