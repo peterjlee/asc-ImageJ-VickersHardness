@@ -11,7 +11,7 @@
 
 <h3>Requirements</h3>
 <p>This macro requires that the indents have been thresholded and Analyze Particles has already been run with the indents added to the ROI manager.</p>
-<p><img src="/images/HV-entries_added-to-Results_536x366.png" alt="HV and YS entries added to Results table" width="536" /></p>
+<p><img src="/images/HV-entries_added-to-Results_v260424_852x146_PAL64.png" alt="HV, YS and UTS entries added to Results table" width="852" /></p>
 
 <p><sub><sup>
  <strong>Legal Notice:</strong> <br />
