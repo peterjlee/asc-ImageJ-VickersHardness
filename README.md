@@ -1,8 +1,8 @@
 # asc-ImageJ-VickersHardness macro
 
 <h3>Vickers Hardness Macro</h3>
-<p>This ImageJ macro:
-<br />1: Uses Feret axes to measure the Vickers Hardness values from diamond indents taken with known loads and adds them to an open Results table.
+<p>This <a href="https://imagej.net/">ImageJ</a>/<a href="https://fiji.sc/">Fiji</a> macro:
+<br />1: Uses Feret axes to measure the <a href="https://en.wikipedia.org/wiki/Vickers_hardness_test">Vickers Hardness</a> values from diamond indents taken with known loads and adds them to an open Results table.
 <p><img src="/images/HV-indent_with_FeretAxes_111x104.jpg" alt="Example of HV diamond indent with Feret axes." width="111" height="104" /></p>
 <br />2: Optionally measures HVp from projected area and SI alternatives.
 <br />3: Estimates the Yield Strength from the HV values and allows user input of formulae.
