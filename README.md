@@ -4,10 +4,10 @@
 <p>This ImageJ macro:
 <br />1: Uses Feret axes to measure the Vickers Hardness values from diamond indents taken with known loads and adds them to an open Results table.
 <p><img src="/images/HV-indent_with_FeretAxes_111x104.jpg" alt="Example of HV diamond indent with Feret axes." width="111" height="104" /></p>
-<br />2: Optionally measures Meyer hardness and SI alternatives.
-<br />3: Estimates the Yield Strength from the HV values.
-<br />4: Optionally draws the Feret axes or area-fits on the selected image.</p>
-<p><img src="/images/HV-macro_options_452x319.png" alt="Options dialog for HV macro." width="452" height="319" /></p>
+<br />2: Optionally measures HVp from projected area and SI alternatives.
+<br />3: Estimates the Yield Strength from the HV values and allows user input of formulae.
+<br />4: Optionally draws the Feret axes on the selected image.</p>
+<p><img src="/images/HV_MainMenu_v260424_512x559_PAL64.png" alt="Options dialog for HV macro." width="512" height="559" /></p>
 
 <h3>Requirements</h3>
 <p>This macro requires that the indents have been thresholded and Analyze Particles has already been run with the indents added to the ROI manager.</p>

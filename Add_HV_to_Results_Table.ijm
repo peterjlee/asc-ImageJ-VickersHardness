@@ -10,9 +10,11 @@
 	v230531 Uses ROI.getFeretPoints to generate primary Feret axis. Changed table column names to be more descriptive. F1: updated indexOf functions. F3: Updated getColorFromColorName function (012324).
 	v260416-20	Added HV from indent dArea option.
 	v260422	Replace HV from indent with Meyer Hardness, and added a plasticity Index, and SI options. g. Handles a wider variety of microns.
+	v260423 Does not create an extra flat image if no overlay lines are drawn.
+	v260424 New HVp measurement and applies user-entered YS and UTS formulae.
 */
 macro "Add_HV_to_Results_Table" {
-    macroL = "Add_HV_to_Results_Table_v260422g.ijm";
+    macroL = "Add_HV_to_Results_Table_v260424b.ijm";
     requires("1.52m28"); /*Uses the new ROI.getFeretPoints released in 1.52m28 */
     saveSettings(); /* Required for restoreExit function */
 	imageTitle = stripKnownExtensionFromString(getTitle);
@@ -85,47 +87,61 @@ macro "Add_HV_to_Results_Table" {
     Dialog.create("Provide Load and Set Scale to Match Results Table \(" + macroL + "\)");
     gLoad = parseInt(call("ij.Prefs.get", "asc.hv.load", 100));
     Dialog.addNumber("Provide load in g used for indentation", gLoad, 0, 10, "g");
-    additionalMethods = newArray("Meyer Hardness", "Plasticity_Index", "Surface_Area_Hardness \(GPa\)", "Projected_Area_Hardness \(GPa\)");
+    additionalMethods = newArray("HVp", "HV_Area_Deviation_Index", "HV\(GPa\)", "HVp\(GPa\)");
 	methodPrefs = split(call("ij.Prefs.get", "asc.hv.methodChecks", "0, 0, 0, 0"), ",");
 	Dialog.addMessage("In addition to conventional HV from indent diagonals the followint are optional:" +
-		"\n   Meyer Hardness (MPa) = F \(N\) / Projected Area \(m" + fromCharCode(178) + "\)" + 
-		"\n   Plasticity Index: Ap / Ad, where Ap = projected Area & Ad = Area calculated from diagonals" + 
-		"\n   SI Units: Surface Area Hardness \(GPa\) = HV * 9.80665 / 1000" +
-		"\n   SI Units: Projected Area Hardness \(GPa\) = HV * 94.5", infoFontSize, instructionColor);
-	Dialog.addCheckboxGroup(4, 1, additionalMethods, methodPrefs);
-    Dialog.addMessage("Optional overlay lines \(set width to 0 for no lines\):", infoFontSize, instructionColor);
+		"\n   HVp: HV from projected area, Ap. For the Vickers diamond geometry As = 1.0785 * Ap" +
+		"\n   Area Deviation \(Plasticity?\) Index: Ap / Ad,\n          where Ap = projected Area & Ad = Area calculated from diagonals" + 
+		"\n   SI Units: HV\(p\) \(GPa\) = HV\(p\) * 9.80665 / 1000", infoFontSize, infoColor);
+	Dialog.setInsets(-5, 20, 0);
+	Dialog.addCheckboxGroup(2, 2, additionalMethods, methodPrefs);
+    Dialog.addMessage("Optional overlay lines________________________________________________________", infoFontSize, infoColor);
     /* ROI Feret */
     if (overlayN > 0) {
         Dialog.setInsets(5, 0, -3);
         Dialog.addCheckbox("Remove the " + overlayN + " existing overlays?", true);
     }
-    Dialog.setInsets(5, 0, -3);
+    // Dialog.setInsets(5, 0, -3);
     Dialog.addMessage("Optional Primary Feret line", infoFontSize, instructionColor);
     iFC = indexOfArray(colorChoices, call("ij.Prefs.get", "asc.hv.feret.color", colorChoices[1]), 1);
     Dialog.addChoice("Primary Feret line color:", colorChoices, colorChoices[iFC]);
     feretROILineWidth = parseInt(call("ij.Prefs.get", "asc.hv.feret.width", 0), 0);
-    Dialog.addNumber("Primary Feret line width \(0 = no line\) = ", feretROILineWidth, 0, 3, "pixels");
+    Dialog.addNumber("Primary Feret line width \(0 = no line\)", feretROILineWidth, 0, 3, "pixels");
     /* ROI Feret 2 */
-    Dialog.setInsets(5, 0, -3);
+    // Dialog.setInsets(5, 0, -3);
     Dialog.addMessage("Optional Feret2 \(complimentary\) line", infoFontSize, instructionColor);
     iF2C = indexOfArray(colorChoices, call("ij.Prefs.get", "asc.hv.feret2.color", colorChoices[2]), 2);
     Dialog.addChoice("Feret2 \(complimentary\) line color:", colorChoices, colorChoices[iF2C]);
     feret2LineWidth = parseInt(call("ij.Prefs.get", "asc.hv.feret2.width", 0), 0);
-    Dialog.addNumber("Feret2 \(complimentary\) line width \(0 = no line\) = ", feret2LineWidth, 0, 3, "pixels");
-	Dialog.addCheckbox("Flatten image to embed overlay lines in RGB copy of image?", call("ij.Prefs.get", "asc.hv.flatImage", true));
-    if (pixelAR != 1) Dialog.addMessage("Aspect pixels, average pixel size of " + lcf + " " + unit + " used", infoFontSize, instructionColor);
+    Dialog.addNumber("Feret2 \(complimentary\) line width \(0 = no line\)", feret2LineWidth, 0, 3, "pixels");
+	Dialog.addCheckbox("Flatten image to embed overlay lines in RGB copy of image \(ignored if line widths set to zero\)?", call("ij.Prefs.get", "asc.hv.flatImage", true));
+	Dialog.addMessage("Yield Strength (\YS\) and Ultimate Tensile Strength \(UTS\) estimates_________________", infoFontSize, infoColor);
+	estimates = newArray("YS", "UTS");
+	estPrefs = split(call("ij.Prefs.get", "asc.hv.estChecks", "0, 0"), ",");
+	Dialog.setInsets(5, 20, 0);
+	Dialog.addCheckboxGroup(1, 2, estimates, estPrefs);
+	Dialog.addMessage("   Please use the same format: A + B * HV if you want to replace with your own values" +
+		"\n   For instance for Cu \[Krishna et al. DOI: 10.1155/2013/352578\]" + 
+		" YS = 0 + 2.874 * HV, UTS = 0 + 3.353 * HV" +
+		"\n   Default equations used are for steels as suggested by Pavlina and Tyne doi: 10.1007/s11665-008-9225-5", infoFontSize, instructionColor);
+	fYS = call("ij.Prefs.get", "asc.hv.fYS", "-90.7 + 2.876 * HV");
+	if (indexOf(fYS, "+") < 0 ) fYS = "-90.7 + 2.876 * HV";
+	fUTS = call("ij.Prefs.get", "asc.hv.fUTS", "-99.8 + 3.734 * HV");
+	if (indexOf(fYS, "+") < 0 ) fYS = "-99.8 + 3.734 * HV";
+	Dialog.addString("Yield Strength Formula", fYS, 20);
+	Dialog.addString("Ultimate Tensile Strength Formula", fUTS, 20);
+	Dialog.setInsets(10, 20, 0);
+	if (pixelAR != 1) Dialog.addMessage("Aspect pixels, average pixel size of " + lcf + " " + unit + " used", infoFontSize, instructionColor);
     if (unit != "mm") Dialog.addMessage("Image scale in " + unit + ", so the mm" + sup2 + " scale factor used is " + sF, infoFontSize, infoWarningColor);
-    if (!tableScale) Dialog.addCheckbox("The Results table does include the scale; do you want to add scale and unit columns?", true);
+    if (!tableScale) Dialog.addCheckbox("The Results table does not include the scale; do you want to add scale and unit columns?", true);
     Dialog.show;
     gLoad = Dialog.getNumber;
     if (gLoad >= 0) call("ij.Prefs.set", "asc.hv.load", gLoad);
-	hM = Dialog.getCheckbox();
-	indexP = Dialog.getCheckbox();
-	hS = Dialog.getCheckbox();
-	hP = Dialog.getCheckbox();
-	checks = newArray(hM, indexP, hS, hP);
-	checksString = arrayToString(checks, ",");
-	call("ij.Prefs.set", "asc.hv.methodChecks", checksString);
+	hVP = Dialog.getCheckbox();
+	indexAD = Dialog.getCheckbox();
+	hVSI = Dialog.getCheckbox();
+	hVPSI = Dialog.getCheckbox();
+	call("ij.Prefs.set", "asc.hv.methodChecks", "" + hVP + "," + indexAD + "," + hVSI + "," + hVPSI);
     /* ROI Feret line */
     if (overlayN > 0) remOverlays = Dialog.getCheckbox();
     else remOverlays = false;
@@ -140,6 +156,14 @@ macro "Add_HV_to_Results_Table" {
     call("ij.Prefs.set", "asc.hv.feret2.width", feret2LineWidth);
 	flatImage = Dialog.getCheckbox();
 	call("ij.Prefs.set", "asc.hv.flatImage", flatImage);
+	if (feretROILineWidth == 0 && feret2LineWidth == 0) flatImage = false; /* No overlay lines to embed */
+	estYS = Dialog.getCheckbox();
+	estUTS = Dialog.getCheckbox();
+	call("ij.Prefs.set", "asc.hv.estChecks", estYS + "," + estUTS);
+	fYS = Dialog.getString();
+	call("ij.Prefs.set", "asc.hv.fYS", fYS);
+	fUTS = Dialog.getString();
+	call("ij.Prefs.set", "asc.hv.fUTS", fUTS);
     if (!tableScale){
 		if (Dialog.getCheckbox()){
 			tableSetColumnValue("PixelWidth", pixelWidth);
@@ -234,34 +258,44 @@ macro "Add_HV_to_Results_Table" {
 		for (i = 0; i < nTable; i++) avgFerets_mm[i] = avgFerets[i] * sF;
 		Table.set("FeretMaxCompAvg_mm", i, avgFerets_mm[i]);
 	}
-	surfAreaF = 0.002 * sF * sin(68 * PI / 180) * gLoad;
+	surfAreaF = 0.002 * sF * sin(68 * PI / 180) * gLoad; /* Need to convert g to kg and d to diamond indent surface area and thus kgf/mm² */
 	hVs = newArray();
+	colHV = "HV_" + gLoad + "g";
     for (i = 0; i < nTable; i++) {
-        hVs[i] = surfAreaF / (pow(avgFerets[i], 2));
-		Table.set("HV_" + gLoad + "g", i, hVs[i]);
-		Table.set("YS_d_Mpa", i, hVs[i] / 0.3);
+		hVs[i] = surfAreaF / (pow(avgFerets[i], 2));
+		Table.set(colHV, i, hVs[i]);
+		if (hVSI) Table.set("HV\(GPa\)", i, hVs[i] * 0.00980665);
     }
-	if (hM || indexP) dAreas = Table.getColumn("Area");
-	if (hM){
-		fN = gLoad / 9806.65;
-		m2MPaF = fN * sF;
-		for (i = 0; i < nTable; i++) {
-			HM = m2MPaF / dAreas[i];
-			Table.set("HM" + gLoad + "g\(MPa\)", i, HM);
+	if (estYS){
+		fYS = replace(fYS, "HV", colHV);
+		IJ.log("YS estimated from: " + fYS);
+		Table.applyMacro("YS_MPa = " + fYS);
+		if (Table.columnExists("YS\(MPa\)")) Table.deleteColumn("YS\(MPa\)");
+		Table.renameColumn("YS_MPa", "YS\(MPa\)");
+	}
+	if (estUTS){
+		fUTS = replace(fUTS, "HV", colHV);
+		IJ.log("UTS estimated from: " + fUTS);
+		Table.applyMacro("UTS_MPa = " + fUTS);
+		if (Table.columnExists("UTS\(MPa\)")) Table.deleteColumn("UTS\(MPa\)");
+		Table.renameColumn("UTS_MPa", "UTS\(MPa\)");
+	}
+	if (hVP || indexAD || hVPSI) dAreas = Table.getColumn("Area");
+	if (hVP || hVPSI){
+		projAreaF = 0.001075 * sF * gLoad;
+		hVPs = newArray();
+		for (i = 0; i < nTable; i++){
+			hVPs[i] = projAreaF / dAreas[i];
+			if (hVP) Table.set("HVp_" + gLoad + "g", i, hVPs[i]);
+			if (hVPSI) Table.set("HVp\(GPa\)", i, hVPs[i] * 0.00980665);
 		}
 	}
-	if (indexP){
+	if (indexAD){
 		for (i = 0; i < nTable; i++) {
-			indexP = dAreas[i] / (pow(avgFerets[i], 2) / 2);
-			Table.set("Plasticity", i, indexP);
+			indexAD = dAreas[i] / (pow(avgFerets[i], 2) / 2);
+			Table.set("HV_AreaDevIndex", i, indexAD);
 		}
 	}	
-	if (hS || hP){
-		for (i = 0; i < nTable; i++) {
-			if (hS) Table.set("Hsa\(GPa\)", i, hVs[i] * 0.00980665);
-			if (hP) Table.set("Hpa\(GPa\)", i, hVs[i] / 94.5);
-		}
-	}
     run("Select None");
     roiManager("deselect");
 	if (flatImage){
@@ -277,12 +311,7 @@ macro "Add_HV_to_Results_Table" {
 /*
 		   ( 8(|)	( 8(|)	Functions	@@@@@:-)	@@@@@:-)
    */
-function arrayToString(array, delimiter){
-	/* v260422 */
-	string = "" + array[0];
-	for (i = 1; i < array.length; i++) string += "," + array[i];
-	return string;
-}
+
 function indexOfArray(array, value,
     default) {
     /* v190423 Adds "default" parameter (use -1 for backwards compatibility). Returns only first found value
